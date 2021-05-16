@@ -308,7 +308,10 @@ class PropertySpec:
                                     from err
                 datatrans = toascii_transfunction[self.numeric_type]
                 #this seems awful
-                data_translated = ( datatrans(x) for x in inarray )
+                try:
+                    data_translated = ( datatrans(x) for x in inarray )
+                except Exception as err:
+                    raise Exception(inarray) from err
                 return tuple( (a, *(x for (x,) in data_translated)) )
             return mytranslator
         else:
