@@ -7,6 +7,8 @@ from .myexport_ply import create_header, \
 from .myimport_ply import get_header_and_data_from_file
 from .myimport_ply import InvalidPlyFormat
 
+class BrokenPlyObject( Exception ):
+    pass
 
 class ObjectSpec:
     def __init__( self, elementspec_dict ):
