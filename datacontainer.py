@@ -255,7 +255,8 @@ class _property():
             self.listelem_type = listelem_type
             self.listlength_type = listlength_type
         else:
-            raise Exception()
+            raise Exception( f"Oops something went wrong, {name}, {datatype},"\
+                            + f" {listelem_type}, {listlength_type}" )
 
 def _littleunpack( databuffer, dataformat ):
     formatchar = { "char":'b', "uchar":'B', "short":'h', "ushort":'H', \
