@@ -32,7 +32,11 @@ class ObjectSpec:
                             (elemname, properties_multidata, \
                                     list(itertools.zip_longest( *elemdata )))
         datapoint_elemtripel = [ reform( x,y,z ) for x,y,z in elemtripel ]
-        return cls.from_datapoints( datapoint_elemtripel )
+        try:
+            myobj = cls.from_datapoints( datapoint_elemtripel )
+        except PropertyInitError as err:
+            raise Exception("elemtripel has wrong form.") from err
+        return myobj
 
     @classmethod
     def from_datapoints( cls, elemtripel ):
@@ -239,6 +243,9 @@ class _element( list ):
     def __repr__( self ):
         return f"Element_{self.name}"
 
+class PropertyInitError( Exception ):
+    pass
+
 class _property():
     def __init__( self, name, datatype, listelem_type=None, \
                                             listlength_type=None ):
@@ -255,8 +262,8 @@ class _property():
             self.listelem_type = listelem_type
             self.listlength_type = listlength_type
         else:
-            raise Exception( f"Oops something went wrong, {name}, {datatype},"\
-                            + f" {listelem_type}, {listlength_type}" )
+            raise PropertyInitError( f"Oops something went wrong, {name}, "\
+                        "f{datatype}, {listelem_type}, {listlength_type}" )
 
 def _littleunpack( databuffer, dataformat ):
     formatchar = { "char":'b', "uchar":'B', "short":'h', "ushort":'H', \
