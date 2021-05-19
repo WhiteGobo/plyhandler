@@ -60,6 +60,10 @@ class ObjectSpec:
         """
         elements = dict()
         elem_with_data = []
+        from collections import Counter
+        elemtripel = tuple( elemtripel )
+        if max( Counter( ( a for a,b,c in elemtripel) ).values()) > 1:
+            raise Exception( "Elementnames must be unique" )
         for elemname, properties_multidata, elemdata in elemtripel:
             elemnumber = len( elemdata )
             newelem = _element( elemname, elemnumber )
@@ -248,7 +252,7 @@ class _element( list ):
         else:
             raise Exception()
     def __hash__( self ):
-        return super( list ).__hash__()
+        return self.name.__hash__() + self.number.__hash__()
     def __repr__( self ):
         return f"Element_{self.name}"
 
