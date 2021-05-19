@@ -54,7 +54,7 @@ def create_data_ascii( ply_object, spacer=" " ):
                 databuffer.append( spacer.join( formattedline ) )
         except TypeError as err:
             raise BrokenPlyObject( \
-                        "couldnt format data of element {elem.name}") from err
+                        f"couldnt format data of element {elem.name}") from err
     return "\n".join( databuffer )
 
 
