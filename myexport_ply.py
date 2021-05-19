@@ -20,9 +20,9 @@ def create_header( ply_object, myformat, comments, spacer=" ", version=(1,0) ):
     headerparts.append( "end_header" )
     return "\n".join(headerparts) + "\n"
 
-from datacontainer import BrokenPlyObject
 
 def create_data_ascii( ply_object, spacer=" " ):
+    from .datacontainer import BrokenPlyObject
     databuffer = []
     formatter = { "char":'%d', "uchar":'%d', "short":'%d', "ushort":'%d', \
                     "int":'%d', "uint":'%d', "float":'%e', "double":'%e', }
