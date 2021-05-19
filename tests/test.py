@@ -33,6 +33,35 @@ class test_asd( unittest.TestCase ):
             vertexpositions2 = myobj.get_filtered_data("vertex",("x", "y", "z"))
             self.assertEqual( vertexpositions, vertexpositions )
 
+    def test_load_every_property_of_every_element( self ):
+        with importlib.resources.path( testsource, "tmp.ply" ) as filepath:
+            myobj = ObjectSpec.load_from_file( filepath )
+
+        self.assertEqual( myobj.elements_and_propertynames, \
+                    {'vertex': ['x', 'y', 'z', 'b'], \
+                    'face': ['vertex_indices'], \
+                    'cornerrectangle': ['leftup', 'rightup', \
+                    'rightdown', 'leftdown']}
+                    )
+        testdings = { \
+                ('vertex','x'): (0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0), \
+                ('vertex','y'): (0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0), \
+                ('vertex','z'): (0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0), \
+                #('vertex','m'): (1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0), \
+                }
+        for element, propertylist in myobj.elements_and_propertynames.items():
+            for prop in propertylist:
+                if (element, prop) in testdings.keys():
+                    coordinatelist = myobj.get_dataarray( element, prop )
+                    self.assertEqual( testdings[(element, prop)],\
+                                        tuple( coordinatelist ) )
+                elif element == 'face' and prop == 'vertex_indices':
+                    facelist = myobj.get_dataarray( element, prop )
+                    self.assertEqual( (0,1,2,3), tuple(facelist[0]) )
+                else:
+                    #check if no error occurs
+                    myobj.get_dataarray( element, prop )
+
     def test_helperfunctions( self ):
         pass
 

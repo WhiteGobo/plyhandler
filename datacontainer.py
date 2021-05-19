@@ -14,6 +14,13 @@ class ObjectSpec:
         self._elementspec = dict( elementspec_dict )
         self.properties = { k.name: v for k, v in elementspec_dict.items() }
 
+    def _get_namesdict_element_to_properties( self ):
+        return { e.name: [ p.name for p in plist ] \
+                for e, plist in self._element_to_propertylist.items() }
+    elements_and_propertynames = property( \
+                            fget=_get_namesdict_element_to_properties, \
+                            )
+
     @classmethod
     def from_arrays( cls, elemtripel ):
         """
