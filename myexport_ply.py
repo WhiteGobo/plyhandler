@@ -43,6 +43,7 @@ def create_data_ascii( ply_object, spacer=" " ):
                 #lineformatter.append( lambda x: tmp%x )
                 #del( asd, tmp )
         for line in ply_object.data[elem.name]:
+            line = list( line ) #Im not sure sometimes this does help???
             formattedline = [ formfoo( single ) \
                                 for single, formfoo \
                                 in itertools.zip_longest(line,lineformatter) \
