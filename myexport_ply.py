@@ -20,6 +20,8 @@ def create_header( ply_object, myformat, comments, spacer=" ", version=(1,0) ):
     headerparts.append( "end_header" )
     return "\n".join(headerparts) + "\n"
 
+from datacontainer import BrokenPlyObject
+
 def create_data_ascii( ply_object, spacer=" " ):
     databuffer = []
     formatter = { "char":'%d', "uchar":'%d', "short":'%d', "ushort":'%d', \
@@ -42,13 +44,17 @@ def create_data_ascii( ply_object, spacer=" " ):
                 lineformatter.append( asd )
                 #lineformatter.append( lambda x: tmp%x )
                 #del( asd, tmp )
-        for line in ply_object.data[elem.name]:
-            line = list( line ) #Im not sure sometimes this does help???
-            formattedline = [ formfoo( single ) \
+        try:
+            for line in ply_object.data[elem.name]:
+                line = list( line ) #Im not sure sometimes this does help???
+                formattedline = [ formfoo( single ) \
                                 for single, formfoo \
                                 in itertools.zip_longest(line,lineformatter) \
                                 ]
-            databuffer.append( spacer.join( formattedline ) )
+                databuffer.append( spacer.join( formattedline ) )
+        except TypeError as err:
+            raise BrokenPlyObject( \
+                        "couldnt format data of element {elem.name}") from err
     return "\n".join( databuffer )
 
 
