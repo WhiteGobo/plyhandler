@@ -1,377 +1,278 @@
 import struct
 import itertools
-
-class DataLoadError( Exception):
-    pass
-class InvalidPlyFormat( Exception ):
-    pass
-
-
-def plycontainer_from_arrays( myarrays ):
-    myobj_spec = ObjectSpec()
-    for elementname, properties, dataforeachprop in myarrays:
-        data = list( itertools.zip_longest( *dataforeachprop ) )
-        tmpel = ElementSpec( elementname, len(data) )
-        myobj_spec.specs.append( tmpel )
-        for prop in properties:
-            tmpprop = PropertySpec( prop[-1], *prop[:-1] )
-            tmpel.properties.append( tmpprop )
-        for singledata in data:
-            tmpel.insert_element_with_data( *singledata )
-    return myobj_spec
+from .myexport_ply import create_header, \
+                        create_data_ascii, \
+                        create_data_binary_little_endian, \
+                        create_data_binary_big_endian
+from .myimport_ply import get_header_and_data_from_file
+from .myimport_ply import InvalidPlyFormat
 
 
 class ObjectSpec:
-    __slots__ = (
-            "specs",\
-            "_loadformat", \
-            "_loadversion", \
-            )
+    def __init__( self, elementspec_dict ):
+        self._element_to_propertylist = dict( elementspec_dict )
+        self._elementspec = dict( elementspec_dict )
+        self.properties = { k.name: v for k, v in elementspec_dict.items() }
 
-    def __init__(self):
-        # A list of element_specs
-        self.specs = []
+    @classmethod
+    def from_arrays( cls, elemtripel ):
+        """
+        :param elemtripel: tripel of 
+                elementname,
+                list of description of properties,
+                and dataarrays one for each property
+            example: 
+                (
+                "vertex", 
+                [("int","x"),("int","y")], 
+                [(1,2,3),(4,5,6)]
+                )
+        """
+        reform = lambda elemname, properties_multidata, elemdata: \
+                            (elemname, properties_multidata, \
+                                    list(itertools.zip_longest( *elemdata )))
+        datapoint_elemtripel = [ reform( x,y,z ) for x,y,z in elemtripel ]
+        return cls.from_datapoints( datapoint_elemtripel )
 
-    def set_load_format( self, myformat ):
-        self._loadformat = bytes( myformat )
-    def set_load_version( self, version ):
-        self._loadversion = version
+    @classmethod
+    def from_datapoints( cls, elemtripel ):
+        """
+        Same as from_arrays but with datapoints instead of arrays
+        example:
+                (
+                "vertex", 
+                [("int","x"),("int","y")], 
+                [(1,4), (2,5), (3,6)]
+                )
+        """
+        elements = dict()
+        elem_with_data = []
+        for elemname, properties_multidata, elemdata in elemtripel:
+            elemnumber = len( elemdata )
+            newelem = _element( elemname, elemnumber )
+            tmplist = list()
+            elements[ newelem ] = tmplist
+            for propdata in properties_multidata:
+                datatype = propdata[0]
+                if datatype == "list":
+                    listelem_type, listlength_type, name = propdata[1:]
+                    tmp = _property( name, datatype, listelem_type, \
+                                                        listlength_type )
+                else:
+                    name = propdata[1]
+                    tmp = _property( name, datatype )
+                tmplist.append( tmp )
+            elem_with_data.append( (newelem, elemdata) )
 
-    def load_data_for_elements(self, datapart_of_file_bytes):
-        format = self._loadformat
-        if format == b'ascii':
-            alllines = ( line.split()
-                        for line in datapart_of_file_bytes.splitlines() )
-            filteredlines = ( tokens for tokens in alllines if len(tokens)>0)
-            datastream = iter( filteredlines )
-        elif format == b'binary_little_endian' \
-                    or format == b'binary_big_endian':
-            datastream = iter( datapart_of_file_bytes )
-        else:
-            raise InvalidPlyFormat( f"format '{format}' isnt supported" )
+        myobj = cls( elements )
+        for elem, elemdata in elem_with_data:
+            for datapoint in elemdata:
+                elem.append( datapoint )
+        return myobj
 
-        try:
-            for el in self.specs:
-                el.finalize_properties()
-                tmpdataloader = el.get_dataloader( format )
-                for i in range( el.count ):
-                    if format == b'ascii':
-                        lineiterator = iter( datastream.__next__() )
-                        tmpdataloader( lineiterator )
+    @classmethod
+    def from_fileheader( cls, header ):
+        elementlines = []
+        for line in header:
+            if line[0] == "element":
+                lastelementlist = list()
+                elementlines.append( (line[1:], lastelementlist) )
+            elif line[0] == "property":
+                try:
+                    lastelementlist.append( line[1:] )
+                except UnboundLocalError as err:
+                    raise InvalidPlyFormat("first property before element") \
+                                                                    from err
+
+        elements = dict()
+        for elemdata, properties_multidata in elementlines:
+            elem_name, elem_number = elemdata[0], int( elemdata[1] )
+            newelem = _element( elem_name, elem_number )
+            tmplist = list()
+            elements[ newelem ] = tmplist
+            for propdata in properties_multidata:
+                datatype = propdata[0]
+                if datatype == "list":
+                    listelem_type, listlength_type, name = propdata[1:]
+                    tmp = _property( name, datatype, listelem_type, \
+                                                        listlength_type )
+                else:
+                    name = propdata[1]
+                    tmp = _property( name, datatype )
+                tmplist.append( tmp )
+        return cls( elements )
+
+
+    @classmethod
+    def load_from_file( cls, filename ):
+        header, data, fileformat = get_header_and_data_from_file( filename )
+        mydata = cls.from_fileheader( header )
+        filling = { \
+                "ascii": mydata._fill_with_asciidata, \
+                "binary_little_endian": mydata._fill_with_little_endian_data, \
+                "binary_big_endian": mydata._fill_with_big_endian_data, \
+                }
+        filling[ fileformat ]( data )
+        return mydata
+
+    def save_to_file( self, filename, dataformat=None, comments=[] ):
+        if dataformat == None:
+            dataformat = self.format
+        datacreationlib = { \
+                "ascii": create_data_ascii, \
+                "binary_little_endian": create_data_binary_little_endian, \
+                "binary_big_endian": create_data_binary_big_endian, \
+                }
+        header = create_header( self, dataformat, comments )
+        if header[-1] != "\n":
+            header = header + "\n"
+        data = datacreationlib[ dataformat ]( self )
+        with open( filename, "w" ) as plyfile:
+            plyfile.write( header )
+            currentpos = plyfile.tell()
+        writeformat_data = {"ascii":"a", "binary_little_endian": "ab", \
+                            "binary_big_endian": "ab" }[ dataformat ]
+        with open( filename, writeformat_data ) as plyfile:
+            plyfile.seek( currentpos )
+            plyfile.write( data )
+
+    def _get_elementname_to_propertylist( self ):
+        return self.properties
+    elementname_to_propertylist = property( \
+                                    fget=_get_elementname_to_propertylist )
+
+    def _get_elements( self ):
+        return self._elementspec.keys()
+    elements = property( fget=_get_elements )
+
+    def _get_nameelement_dictionary( self ):
+        return { elem.name: elem for elem in self.elements }
+    _name_to_element = property( fget=_get_nameelement_dictionary )
+
+    def _get_data( self ):
+        return self._name_to_element
+    data = property( fget=_get_data )
+
+    def get_dataarray( self, elementname, propertyname ):
+        asd = self.get_filtered_data( elementname, [propertyname] )
+        return [ i[0] for i in asd ]
+
+    def get_filtered_data( self, elementname, propertynames ):
+        elemdata = self._name_to_element[ elementname ]
+        proplist = self.elementname_to_propertylist[ elementname ]
+        name_to_index = { prop.name:i for i, prop in enumerate(proplist) }
+        elemlist = [ name_to_index[propname] for propname in propertynames]
+        myfilter = lambda tup: tuple( tup[i] for i in elemlist )
+        return [ myfilter(data) for data in elemdata ]
+
+    def _fill_with_asciidata( self, data ):
+        data = iter( data )
+        for elem in self.elements:
+            for n in range(elem.number):
+                tmp = data.__next__()
+                nextline = iter( tmp.split() )
+                singledata = []
+                for prop in self.properties[ elem.name ]:
+                    if prop.datatype == "list":
+                        tmplist = []
+                        listlength = int( nextline.__next__() )
+                        for i in range( listlength ):
+                            if prop.listelem_type in ("float", "double"):
+                                tmplist.append( float(nextline.__next__()) )
+                            elif prop.listelem_type in ("char","uchar","short",\
+                                                    "ushort", "int", "uint"):
+                                tmplist.append( int( nextline.__next__()))
+                        singledata.append( tmplist )
+                        del( tmplist )
+                    if prop.datatype in ("float", "double"):
+                        singledata.append( float( nextline.__next__()) )
+                    elif prop.datatype in ("char", "uchar", "short", \
+                                                    "ushort", "int", "uint"):
+                        singledata.append( int( nextline.__next__()))
+                elem.append( singledata )
+
+
+    def _fill_with_binary_data( self, data, byteorder="little" ):
+        byteorder = {   '<':'<', "little":'<', "little_endian":'<', \
+                        '>':'>', "big":'>', "big_endian":'>' \
+                        }[ byteorder ]
+        data = iter( data )
+        typelength = { "char":1, "uchar":1, "short":2, "ushort":2, \
+                    "int":4, "uint":4, "float":4, "double":8, }
+        getnext = lambda nextbyte, datatype: bytes( nextbyte.__next__() \
+                                        for i in range(typelength[datatype]))
+        nextbyte = iter( data.__next__() )
+        for elem in self.elements:
+            for n in range(elem.number):
+                singledata = []
+                for prop in self.properties[ elem.name ]:
+                    if prop.datatype == "list":
+                        tmplist = []
+                        data = getnext( nextbyte, prop.listlength_type )
+                        listlength, = _littleunpack( data, prop.listlength_type)
+                        for i in range( listlength ):
+                            data = getnext( nextbyte, prop.listelem_type )
+                            tmplist.extend( _littleunpack( data, \
+                                                        prop.listelem_type ))
+                        singledata.append( tmplist )
+                        del( tmplist )
                     else:
-                        tmpdataloader( datastream )
-        except DataLoadError as err:
-            raise InvalidPlyFormat( "header doesnt match with data" ) from err
-        try:
-            datastream.__next__()
-            #if there is still data raise exception
-            raise InvalidPlyFormat( "more data than in header specified" )
-        except StopIteration:
-            pass
+                        data = getnext( nextbyte, prop.datatype )
+                        singledata.extend( _littleunpack( data, prop.datatype ))
+                elem.append( singledata )
 
-    def __getitem__( self, key ):
-        for el in self.specs:
-            try:
-                asciiname = str( el.name, encoding="ascii" )
-            except Exception():
-                asciiname = None
-            if key == asciiname or key == el.name:
-                return el
-        raise KeyError( f"not found: {key}" )
+    def _fill_with_little_endian_data( self, data ):
+        return self._fill_with_binary_data( data, "little" )
 
-    def keys( self, encoding=None ):
-        if encoding:
-            trans = lambda x: str( x, encoding=encoding )
-        else:
-            trans = lambda x: x
-        return [ trans( el.name ) for el in self.specs ]
+    def _fill_with_big_endian_data( self, data ):
+        return self._fill_with_binary_data( data, "big" )
 
-
-class ElementSpec:
-    __slots__ = (
-        "name",
-        "count",
-        "properties",
-        "data",
-        "finalized_properties", 
-    )
-
-    def __init__(self, name, count):
-        self.name = name
-        self.count = count
-        self.properties = []
-        self.data = []
-        self.finalized_properties = False
-
-    def finalize_properties( self ):
-        self.finalized_properties = True
-
-    def insert_element_with_data( self, *nextdata ):
-        nextdata = list(( *nextdata, )) #?
-        #produces error when nextdata is read twice. Maybe because of use
-        # of iterators.
-        if len( nextdata ) != len( self.properties ):
-            raise Exception( ("inserted element must be same length %d"\
-                            "as number of properties(%d)") \
-                            %(len( nextdata),len(self.properties)))
-        self.data.append( tuple((*nextdata,)) )
-
-    def get_dataloader( self, format ):
-        property_loader_array = [ prop.get_datagrabber( format )\
-                                    for prop in self.properties ]
-        def mydataloader( datastream ):
-            nextdata = []
-            for proploader in property_loader_array:
-                nextdata.append( proploader( datastream ) )
-            self.insert_element_with_data( *nextdata )
-        return mydataloader
-
-    def to_plyfileline(self):
-        tostr = lambda x: x if type(x)==str \
-                            else x.decode( "ascii" )
-        return [" ".join(["element", tostr(self.name), \
-                                    str( self.count )])\
-                                    ,]
-
-    def to_plydata( self, myformat ):
-        #if myformat == "ascii":
-        mytransarray = [ prop.get_toply_translator( myformat ) \
-                        for prop in self.properties ]
-        asd = bytearray()
-        if myformat == "ascii":
-            for data in self.data:
-                line = list((mytransarray[i](single) \
-                            for i, single in enumerate(data)))
-                line = list( itertools.chain( *line ) )
-                line = " ".join(line) + "\n"
-                asd.extend( line.encode( myformat ) )
+class _element( list ):
+    def __init__( self, name, number ):
+        if all(( type(number)==int, number >= 0 )):
+            self.name = name
+            self.number = number
         else:
             raise Exception()
-        return asd
-
-    def get_datatranslator( self, format ):
-        trans_array = [ prop.get_singletranslator( format ) \
-                        for prop in self.properties ]
-        num_properties = len( trans_array )
-        if format == b'ascii':
-            def mytrans( *args ):
-                #return tuple( trans_array[i](args[i]) \
-                return tuple( trans_array[i] \
-                                for i in range( len(args)) )
-        elif bytes(format) in (b'binary_little_endian',b'binary_big_endian'):
-            slices = []
-            current_index = 0
-            for prop in self.properties:
-                new_index = current_index \
-                                + numtype_len[ bytes(prop.numeric_type) ]
-                slices.append((current_index, new_index))
-                current_index = new_index
-            def mytrans( *inputbytes ):
-                a = [ bytearray( inputbytes[ slices[i][0]:slices[i][1] ] )\
-                                for i in range( num_properties ) ]
-                return tuple( trans_array[i]( a[i] ) \
-                                for i in range( num_properties) )
-        else:
-            raise InvalidPlyFormat()
-        return mytrans
-
-    def load(self, format, stream):
-        if format == b'ascii':
-            stream = stream.readline().split()
-        return [x.load(format, stream) for x in self.properties]
-
-    def get_filtered_data( self, *keys ):
-        indices = [ self.index( key ) for key in keys ]
-        datafilter = lambda singledata: tuple( singledata[i] for i in indices )
-        return [ datafilter( singledata ) for singledata in self.data ]
-
-
-    def index( self, key ):
-        if type( key ) == str:
-            key = key.encode( "ascii" )
-        namelist = [ prop.name for prop in self.properties ]
-        return namelist.index( key )
-
-    def __getitem__( self, key ):
-        for prop in self.properties:
-            try:
-                asciiname = str( prop.name, encoding="ascii" )
-            except Exception():
-                asciiname = None
-            if key == asciiname or key == prop.name:
-                return prop
-        raise KeyError( f"{self.name} doesnt contain: {key}" )
-
-    def keys( self, encoding=None ):
-        if encoding:
-            trans = lambda x: str( x, encoding=encoding )
-        else:
-            trans = lambda x: x
-        return [ trans( prop.name ) for prop in self.properties ]
-
-
-
-class PropertySpec:
-    __slots__ = (
-        "name",
-        "datalength_type",
-        "numeric_type",
-        "propertytype", 
-    )
+    def __hash__( self ):
+        return super( list ).__hash__()
     def __repr__( self ):
-        return f"(asd{self.name}, {self.propertytype})"
+        return f"Element_{self.name}"
 
-    def __init__(self, name, propertytype, *args):
-        interpret = { bytes: lambda x: x,\
-                        str: lambda x: bytes( x, "ascii" ),\
-                        bytearray: lambda x: bytes(x) }
-        tobytes = lambda x: interpret[ type(x) ]( x )
-        self.name = name
-        if propertytype == b"list" or propertytype == "list":
-            self.propertytype = propertytype
-            self.numeric_type = tobytes( args[1] )
-            self.datalength_type = tobytes( args[0] )
+class _property():
+    def __init__( self, name, datatype, listelem_type=None, \
+                                            listlength_type=None ):
+        if any((\
+                datatype == "list" and listelem_type is not None \
+                                            and listlength_type is not None,
+                datatype in ( "char", "uchar", "short", "ushort", \
+                            "int", "uint", "float", "double" ) \
+                                            and listelem_type is None \
+                                            and listlength_type is None,
+                )):
+            self.name = name
+            self.datatype = datatype
+            self.listelem_type = listelem_type
+            self.listlength_type = listlength_type
         else:
-            self.propertytype = propertytype
-            self.numeric_type = tobytes( propertytype )
-            self.datalength_type = None
+            raise Exception()
 
-    def get_datagrabber( self, format ):
-        if bytes(format) == b"ascii":
-            get_data_from_iterator = lambda stream, l: \
-                                        stream.__next__()
-        elif bytes(format) in (b'binary_little_endian',\
-                                b'binary_big_endian'):
-            get_data_from_iterator \
-                        = lambda stream, bytelength: \
-                        bytearray( stream.__next__() \
-                                    for i in range(bytelength))
-        else:
-            raise InvalidPlyFormat()
-        if self.propertytype == b"list":
-            lengthtranslator = self.get_singletranslator(format,\
-                                        self.datalength_type )
-            mytrans = self.get_singletranslator( format, \
-                                        self.numeric_type )
-            lengthbyteslength = numtype_len[self.datalength_type]
-            datalength = numtype_len[ self.numeric_type ]
-            def mygrabber( iterator_data ):
-                lengthbytes = get_data_from_iterator( \
-                                        iterator_data, \
-                                        lengthbyteslength )
-                length = lengthtranslator( lengthbytes )
-                asd = []
-                for i in range( length ):
-                    data = get_data_from_iterator(iterator_data,\
-                                        datalength )
-                    asd.append( mytrans( data ))
-                return tuple( asd )
-            return mygrabber
-        else:
-            mytrans = self.get_singletranslator( format, \
-                                            self.numeric_type )
-            datalength = numtype_len[ self.numeric_type ]
-            def mygrabber( iterator_data ):
-                data = get_data_from_iterator( iterator_data, \
-                                            datalength )
-                return mytrans( data )
-            return mygrabber
+def _littleunpack( databuffer, dataformat ):
+    formatchar = { "char":'b', "uchar":'B', "short":'h', "ushort":'H', \
+                    "int":'i', "uint":'I', "float":'f', "double":'d', }
+    return struct.unpack( '<' + formatchar[dataformat], databuffer )
 
-    def is_list( self ):
-        return self.propertytype == b"list" \
-                or self.propertytype == "list"
-                    
+def _bigunpack( data, dataformat ):
+    formatchar = { "char":'b', "uchar":'B', "short":'h', "ushort":'H', \
+                    "int":'i', "uint":'I', "float":'f', "double":'d', }
+    return struct.unpack( '>' + formatchar[dataformat], databuffer )
 
-    def to_plyfileline(self):
-        tostr = lambda x: x if type(x)==str \
-                            else x.decode( "ascii" )
-        if self.is_list():
-            description = ( "list", \
-                                tostr( self.datalength_type ), \
-                                tostr( self.numeric_type ), \
-                                )
-        else:
-            description = [ tostr(self.numeric_type ), ]
+def _littlepack( databuffer, dataformat ):
+    formatchar = { "char":'b', "uchar":'B', "short":'h', "ushort":'H', \
+                    "int":'i', "uint":'I', "float":'f', "double":'d', }
+    return struct.pack( '<' + formatchar[dataformat], databuffer )
 
-        name = tostr( self.name )
-
-        return [" ".join(["property", *description, name]),]
-
-    def get_toply_translator( self, format ):
-        if self.propertytype == b"list" or self.propertytype == "list":
-            def mytranslator( inarray ):
-                try:
-                    (a,) = toascii_transfunction[self.datalength_type]\
-                                                    ( len( inarray ))
-                except TypeError as err:
-                    raise KeyError("should translate ist but there is no list")\
-                                    from err
-                datatrans = toascii_transfunction[self.numeric_type]
-                #this seems awful
-                data_translated = ( datatrans(x) for x in inarray )
-                return tuple( (a, *(x for (x,) in data_translated)) )
-            return mytranslator
-        else:
-            return toascii_transfunction[ self.numeric_type ]
-        return 
-
-    def get_singletranslator( self, format, numeric_type ):
-        alltrans = trans_for_format[ format ]
-        return alltrans[ bytes( numeric_type ) ]
-
-toascii_transfunction= {\
-        b"char": lambda x: ("%d"%(x),), \
-        b"uchar": lambda x: ("%d"%(x),), \
-        b"short": lambda x: ("%d"%(x),), \
-        b"ushort": lambda x: ("%d"%(x),), \
-        b"int": lambda x: ("%d"%(x),), \
-        b"uint": lambda x: ("%d"%(x),), \
-        b"float": lambda x: ("%f"%(x),), \
-        b"double": lambda x: ("%.14f"%(x),), \
-        }
-
-single_translator_ascii = {\
-        b"char": int,\
-        b"uchar": int,\
-        b'short': int,\
-        b'ushort': int,\
-        b'int': int,\
-        b'uint': int,\
-        b'float': float,\
-        b'double': float,\
-        }
-single_translator_binary_little = {\
-        b"char": lambda x: int.from_bytes( x, "little", signed=True ),\
-        b"uchar": lambda x: int.from_bytes( x, "little", signed=False ),\
-        b'short': lambda x: int.from_bytes( x, "little", signed=True ),\
-        b'ushort': lambda x: int.from_bytes( x, "little", signed=False ),\
-        b'int': lambda x: int.from_bytes( x, "little", signed=True ),\
-        b'uint': lambda x: int.from_bytes( x, "little", signed=False ),\
-        b'float': lambda x: struct.unpack( "<f", x )[0], \
-        b'double': lambda x: struct.unpack( "<d", x )[0], \
-        }
-single_translator_binary_big = {\
-        b"char": lambda x: int.from_bytes( x, "big", signed=True ),\
-        b"uchar": lambda x: int.from_bytes( x, "big", signed=False ),\
-        b'short': lambda x: int.from_bytes( x, "big", signed=True ),\
-        b'ushort': lambda x: int.from_bytes( x, "big", signed=False ),\
-        b'int': lambda x: int.from_bytes( x, "big", signed=True ),\
-        b'uint': lambda x: int.from_bytes( x, "big", signed=False ),\
-        b'float': lambda x: struct.unpack( ">f", x )[0], \
-        b'double': lambda x: struct.unpack( ">d", x )[0], \
-        }
-trans_for_format = { \
-        b"ascii": single_translator_ascii, \
-        b"binary_little_endian": single_translator_binary_little, \
-        b"binary_big_endian": single_translator_binary_big, \
-        }
-numtype_len = { \
-        b"char": 1, \
-        b"uchar": 1, \
-        b'short': 2, \
-        b'ushort': 2, \
-        b'int': 4, \
-        b'uint': 4, \
-        b'float': 4, \
-        b'double': 8, \
-        }
+def _bigpack( data, dataformat ):
+    formatchar = { "char":'b', "uchar":'B', "short":'h', "ushort":'H', \
+                    "int":'i', "uint":'I', "float":'f', "double":'d', }
+    return struct.pack( '>' + formatchar[dataformat], databuffer )
