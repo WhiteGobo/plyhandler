@@ -39,8 +39,9 @@ def create_data_ascii( ply_object, spacer=" " ):
                                         ))
                 lineformatter.append( foo )
             else:
+                usedformatter = formatter[ prop.datatype ]
                 def asd( x ):
-                    return formatter[ prop.datatype ]%x
+                    return usedformatter%x
                 lineformatter.append( asd )
                 #lineformatter.append( lambda x: tmp%x )
                 #del( asd, tmp )
