@@ -16,6 +16,9 @@ class ObjectSpec:
         self._elementspec = dict( elementspec_dict )
         self.properties = { k.name: v for k, v in elementspec_dict.items() }
 
+    def get_length_element( self, elementname ):
+        return len( self._name_to_element[ elementname ] )
+
     def get_dataarray( self, elementname, propertyname ):
         asd = self.get_filtered_data( elementname, [propertyname] )
         return [ i[0] for i in asd ]
