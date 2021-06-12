@@ -16,12 +16,17 @@ class ObjectSpec:
         self._elementspec = dict( elementspec_dict )
         self.properties = { k.name: v for k, v in elementspec_dict.items() }
 
-    def _get_namesdict_element_to_properties( self ):
-        return { e.name: [ p.name for p in plist ] \
-                for e, plist in self._element_to_propertylist.items() }
-    elements_and_propertynames = property( \
-                            fget=_get_namesdict_element_to_properties, \
-                            )
+    def get_dataarray( self, elementname, propertyname ):
+        asd = self.get_filtered_data( elementname, [propertyname] )
+        return [ i[0] for i in asd ]
+
+    def get_filtered_data( self, elementname, propertynames ):
+        elemdata = self._name_to_element[ elementname ]
+        proplist = self.elementname_to_propertylist[ elementname ]
+        name_to_index = { prop.name:i for i, prop in enumerate(proplist) }
+        elemlist = [ name_to_index[propname] for propname in propertynames]
+        myfilter = lambda tup: tuple( tup[i] for i in elemlist )
+        return [ myfilter(data) for data in elemdata ]
 
     @classmethod
     def from_arrays( cls, elemtripel ):
@@ -170,17 +175,13 @@ class ObjectSpec:
         return self._name_to_element
     data = property( fget=_get_data )
 
-    def get_dataarray( self, elementname, propertyname ):
-        asd = self.get_filtered_data( elementname, [propertyname] )
-        return [ i[0] for i in asd ]
 
-    def get_filtered_data( self, elementname, propertynames ):
-        elemdata = self._name_to_element[ elementname ]
-        proplist = self.elementname_to_propertylist[ elementname ]
-        name_to_index = { prop.name:i for i, prop in enumerate(proplist) }
-        elemlist = [ name_to_index[propname] for propname in propertynames]
-        myfilter = lambda tup: tuple( tup[i] for i in elemlist )
-        return [ myfilter(data) for data in elemdata ]
+    def _get_namesdict_element_to_properties( self ):
+        return { e.name: [ p.name for p in plist ] \
+                for e, plist in self._element_to_propertylist.items() }
+    elements_and_propertynames = property( \
+                            fget=_get_namesdict_element_to_properties, \
+                            )
 
     def _fill_with_asciidata( self, data ):
         data = iter( data )
