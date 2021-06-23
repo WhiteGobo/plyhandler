@@ -47,7 +47,7 @@ class ObjectSpec:
         """
         reform = lambda elemname, properties_multidata, elemdata: \
                             (elemname, properties_multidata, \
-                                    list(itertools.zip_longest( *elemdata )))
+                                    list( zip( *elemdata )))
         datapoint_elemtripel = [ reform( x,y,z ) for x,y,z in elemtripel ]
         try:
             myobj = cls.from_datapoints( datapoint_elemtripel )
@@ -80,7 +80,7 @@ class ObjectSpec:
             for propdata in properties_multidata:
                 datatype = propdata[0]
                 if datatype == "list":
-                    listelem_type, listlength_type, name = propdata[1:]
+                    listlength_type, listelem_type, name = propdata[1:]
                     tmp = _property( name, datatype, listelem_type, \
                                                         listlength_type )
                 else:
@@ -118,7 +118,7 @@ class ObjectSpec:
             for propdata in properties_multidata:
                 datatype = propdata[0]
                 if datatype == "list":
-                    listelem_type, listlength_type, name = propdata[1:]
+                    listlength_type, listelem_type, name = propdata[1:]
                     tmp = _property( name, datatype, listelem_type, \
                                                         listlength_type )
                 else:
@@ -137,7 +137,8 @@ class ObjectSpec:
                 "binary_little_endian": mydata._fill_with_little_endian_data, \
                 "binary_big_endian": mydata._fill_with_big_endian_data, \
                 }
-        filling[ fileformat ]( data )
+        fillmethod = filling[ fileformat ]
+        fillmethod( data )
         return mydata
 
     def save_to_file( self, filename, dataformat=None, comments=[] ):

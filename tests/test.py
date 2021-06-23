@@ -65,6 +65,20 @@ class test_asd( unittest.TestCase ):
     def test_helperfunctions( self ):
         pass
 
+    def test_doublearray( self ):
+        facespipeline = (("list", "uchar", "uint", "vertex_indices" ), \
+                        ("list", "uchar", "float", "vertex_indices_second" ), \
+                        )
+        faces = (np.array( testB ), np.array( testB ),)
+        myobj = ObjectSpec.from_arrays( [\
+                            ("faces", facespipeline, faces ), \
+                            ])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            myfilepath = os.path.join( tmpdir, "tmp.ply" )
+            myobj.save_to_file( myfilepath, "ascii" )
+            myobj2 = ObjectSpec.load_from_file( myfilepath )
+
+
     def test_create_dataobject( self ):
         vertexpipeline = ( \
                             ( "float", "x" ), \
