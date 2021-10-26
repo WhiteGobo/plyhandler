@@ -232,13 +232,13 @@ class ObjectSpec:
                         tmplist = []
                         try:
                             data = getnext( nextbyte, prop.listlength_type )
-                        except StopIteration as err:
+                        except (RuntimeError, StopIteration) as err:
                             raise BrokenPlyObject( "failed to load {elem.name}" )
                         listlength, = _littleunpack( data, prop.listlength_type)
                         for i in range( listlength ):
                             try:
                                 data = getnext( nextbyte, prop.listelem_type )
-                            except StopIteration as err:
+                            except (RuntimeError, StopIteration) as err:
                                 raise BrokenPlyObject( "failed to load {elem.name}" )
                             tmplist.extend( _littleunpack( data, \
                                                         prop.listelem_type ))
@@ -247,7 +247,7 @@ class ObjectSpec:
                     else:
                         try:
                             data = getnext( nextbyte, prop.datatype )
-                        except StopIteration as err:
+                        except (RuntimeError, StopIteration) as err:
                             raise BrokenPlyObject( "failed to load {elem.name}" )
                         singledata.extend( _littleunpack( data, prop.datatype ))
                 elem.append( singledata )
