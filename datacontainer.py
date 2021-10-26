@@ -230,16 +230,25 @@ class ObjectSpec:
                 for prop in self.properties[ elem.name ]:
                     if prop.datatype == "list":
                         tmplist = []
-                        data = getnext( nextbyte, prop.listlength_type )
+                        try:
+                            data = getnext( nextbyte, prop.listlength_type )
+                        except StopIteration as err:
+                            raise BrokenPlyObject( "failed to load {elem.name}" )
                         listlength, = _littleunpack( data, prop.listlength_type)
                         for i in range( listlength ):
-                            data = getnext( nextbyte, prop.listelem_type )
+                            try:
+                                data = getnext( nextbyte, prop.listelem_type )
+                            except StopIteration as err:
+                                raise BrokenPlyObject( "failed to load {elem.name}" )
                             tmplist.extend( _littleunpack( data, \
                                                         prop.listelem_type ))
                         singledata.append( tmplist )
                         del( tmplist )
                     else:
-                        data = getnext( nextbyte, prop.datatype )
+                        try:
+                            data = getnext( nextbyte, prop.datatype )
+                        except StopIteration as err:
+                            raise BrokenPlyObject( "failed to load {elem.name}" )
                         singledata.extend( _littleunpack( data, prop.datatype ))
                 elem.append( singledata )
 
